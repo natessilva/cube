@@ -2,19 +2,31 @@ package main
 
 import (
 	"cube"
-	"flag"
 	"fmt"
+	"syscall/js"
+	"time"
 )
 
-func main() {
-	var scramble string
-
-	flag.StringVar(&scramble, "scramble", "", "Supply a scramble to solve")
-	flag.Parse()
-
-	solution, err := cube.Solve(scramble)
-	if err != nil {
-		panic(err)
+func solve(this js.Value, args []js.Value) interface{} {
+	if len(args) < 1 {
+		return "Error: No argument provided"
 	}
-	fmt.Println(solution)
+
+	message := args[0].String()
+	start := time.Now()
+	solution, err := cube.Solve(message)
+	duration := time.Since(start)
+	if err != nil {
+		return err.Error()
+	}
+	return js.ValueOf(map[string]interface{}{
+		"solution": solution,
+		"duration": fmt.Sprintf("Solved in %s!", duration),
+	})
+}
+
+func main() {
+	js.Global().Set("solve", js.FuncOf(solve))
+
+	select {}
 }
