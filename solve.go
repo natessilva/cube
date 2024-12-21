@@ -1,9 +1,16 @@
 package cube
 
+import (
+	"math"
+)
+
 type solver struct {
 	scrambledCube cube
 	path          []int
 	pathPhase2    []int
+	minSolution   int
+	solution      string
+	maxLength     int
 }
 
 func newSolver(scramble string) (*solver, error) {
@@ -15,6 +22,8 @@ func newSolver(scramble string) (*solver, error) {
 		path:          make([]int, 0),
 		pathPhase2:    make([]int, 0),
 		scrambledCube: c,
+		minSolution:   999,
+		maxLength:     21,
 	}, nil
 }
 
@@ -23,7 +32,8 @@ func Solve(scrambe string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return solver.solve(), nil
+	solution := solver.solve()
+	return solution, nil
 }
 
 func (s *solver) solve() string {
@@ -43,16 +53,16 @@ func (s *solver) solve() string {
 	// phase1 in hopes that we find one that "sets up" a good phase 2
 	// and provides a generally efficient solve.
 	for i := cost; i < 20; i++ {
-		done := s.search(eoCoord, coCoord, ePermCoord, i)
+		done := s.search(eoCoord, coCoord, ePermCoord, cost, i)
 		if done {
 			break
 		}
 	}
 
-	return toString(append(s.path, s.pathPhase2...))
+	return s.solution
 }
 
-func (s *solver) search(eoCoord, coCoord, ePermCoord, phase1Cost int) bool {
+func (s *solver) search(eoCoord, coCoord, ePermCoord, dist, phase1Cost int) bool {
 	// if the cost is zero than we have in fact found a solution to phase1 🎉
 	// begin searching for phase2 solutions
 	if phase1Cost == 0 {
@@ -81,7 +91,7 @@ func (s *solver) search(eoCoord, coCoord, ePermCoord, phase1Cost int) bool {
 		// quite time consuming. Also, if we have a more than 10 move Phase 2
 		// there is almost certainly a less optimal phase 1 that leads to
 		// a much shorter phase 2
-		phase2Limit := 11
+		phase2Limit := int(math.Min(10, float64(s.minSolution-len(s.path))))
 
 		newCost := phase2Hueristic(cpCoord, eudCoord, eePermCoord)
 		// same as in phase 1 - our huerist might under estimate and so
@@ -94,7 +104,7 @@ func (s *solver) search(eoCoord, coCoord, ePermCoord, phase1Cost int) bool {
 			}
 		}
 		return false
-	} else {
+	} else if dist != 0 || phase1Cost <= dist {
 		// otherwise, apply every possible move and see if it is worth searching
 		for m := 0; m < moveCount; m++ {
 			// don't perform sequential moves of the same face
@@ -118,7 +128,7 @@ func (s *solver) search(eoCoord, coCoord, ePermCoord, phase1Cost int) bool {
 			}
 
 			s.path = append(s.path, m)
-			done := s.search(eoNew, coNew, ePermNew, phase1Cost-1)
+			done := s.search(eoNew, coNew, ePermNew, costNew, phase1Cost-1)
 			if done {
 				return true
 			}
@@ -130,7 +140,17 @@ func (s *solver) search(eoCoord, coCoord, ePermCoord, phase1Cost int) bool {
 
 func (s *solver) searchPhase2(cpCoord, eudCoord, eePermCoord, phase2Cost int) bool {
 	if phase2Cost == 0 {
-		return true
+		solutionLength := len(s.path) + len(s.pathPhase2)
+		if solutionLength < s.minSolution {
+			s.minSolution = solutionLength
+			s.solution = toString(append(append([]int(nil), s.path...), s.pathPhase2...))
+
+			// once we've found a solution sufficiently short enough bail!
+			if s.minSolution <= s.maxLength {
+				return true
+			}
+		}
+		return false
 	} else {
 		for m := 0; m < moveCount; m++ {
 			// don't do quarter turns on the side faces as these are not valid moves in phase 2

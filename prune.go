@@ -15,17 +15,24 @@ import "math"
 // the graph during search. We use the min moves tables as a hueristic
 // to guide the actual search algorithm towards good solutions.
 var eoLookup [2048][moveCount]int
-var eoMinMoves [2048]int
 var coLookup [2187][moveCount]int
-var coMinMoves [2187]int
 var eSliceP1Lookup [495][moveCount]int
-var eSliceP1MinMoves [495]int
 var cpLookup [40320][moveCount]int
-var cpMinMoves [40320]int
 var udLookup [40320][moveCount]int
-var udMinMoves [40320]int
 var eSliceP2Lookup [24][moveCount]int
-var eSliceP2MinMoves [24]int
+
+// in Phase 1 we are trying to orient all pieces and put the 4 e slice
+// edges in their slice (we don't care about where in the slice)
+// We will calculate the min moves to solve EO + ESlice and
+// CO + ESlice and we will use the max of the two as our heuristic
+var phase1EoAndSlice [2048 * 495]byte
+var phase1CoAndSlice [2187 * 495]byte
+
+// In phase2 we are trying to permute everything. We will calculate
+// the min moves to all all corners + all e slice edges and all edges
+// and use the max of the two as our heuristic
+var phase2CornerESliceMinMoves [40320 * 24]byte
+var phase2AllEdgesMinMoves [40320 * 24]byte
 
 func init() {
 	initEO()
@@ -34,6 +41,10 @@ func init() {
 	initCP()
 	initUD()
 	initESliceP2()
+	initPhase2CornersESlice()
+	initPhase2Edges()
+	initPhase1COAndSlice()
+	initPhase1EOAndSlice()
 }
 
 func initEO() {
@@ -42,23 +53,6 @@ func initEO() {
 		for j := 0; j < moveCount; j++ {
 			movedCube := transform(c, moves[j])
 			eoLookup[i][j] = toEOCoordinate(movedCube)
-		}
-	}
-	queue := []int{0}
-	max := 0
-	for len(queue) > 0 {
-		current := queue[0]
-		depth := eoMinMoves[current]
-		queue = queue[1:]
-		for i := 0; i < moveCount; i++ {
-			next := eoLookup[current][i]
-			if eoMinMoves[next] == 0 && next != 0 {
-				eoMinMoves[next] = 1 + depth
-				if eoMinMoves[next] > max {
-					max = eoMinMoves[next]
-				}
-				queue = append(queue, next)
-			}
 		}
 	}
 }
@@ -71,23 +65,6 @@ func initCO() {
 			coLookup[i][j] = toCOCoordinate(movedCube)
 		}
 	}
-	queue := []int{0}
-	max := 0
-	for len(queue) > 0 {
-		current := queue[0]
-		depth := coMinMoves[current]
-		queue = queue[1:]
-		for i := 0; i < moveCount; i++ {
-			next := coLookup[current][i]
-			if coMinMoves[next] == 0 && next != 0 {
-				coMinMoves[next] = 1 + depth
-				if coMinMoves[next] > max {
-					max = coMinMoves[next]
-				}
-				queue = append(queue, next)
-			}
-		}
-	}
 }
 
 func initESliceP1() {
@@ -96,23 +73,6 @@ func initESliceP1() {
 		for j := 0; j < moveCount; j++ {
 			movedCube := transform(c, moves[j])
 			eSliceP1Lookup[i][j] = toESliceP1Coordinate(movedCube)
-		}
-	}
-	queue := []int{0}
-	max := 0
-	for len(queue) > 0 {
-		current := queue[0]
-		depth := eSliceP1MinMoves[current]
-		queue = queue[1:]
-		for i := 0; i < moveCount; i++ {
-			next := eSliceP1Lookup[current][i]
-			if eSliceP1MinMoves[next] == 0 && next != 0 {
-				eSliceP1MinMoves[next] = 1 + depth
-				if eSliceP1MinMoves[next] > max {
-					max = eSliceP1MinMoves[next]
-				}
-				queue = append(queue, next)
-			}
 		}
 	}
 }
@@ -125,23 +85,6 @@ func initCP() {
 			cpLookup[i][j] = toCPCoordinate(movedCube)
 		}
 	}
-	queue := []int{0}
-	max := 0
-	for len(queue) > 0 {
-		current := queue[0]
-		depth := cpMinMoves[current]
-		queue = queue[1:]
-		for i := 0; i < moveCount; i++ {
-			next := cpLookup[current][i]
-			if cpMinMoves[next] == 0 && next != 0 {
-				cpMinMoves[next] = 1 + depth
-				if cpMinMoves[next] > max {
-					max = cpMinMoves[next]
-				}
-				queue = append(queue, next)
-			}
-		}
-	}
 }
 
 func initUD() {
@@ -150,23 +93,6 @@ func initUD() {
 		for j := 0; j < moveCount; j++ {
 			movedCube := transform(c, moves[j])
 			udLookup[i][j] = toUDCoordinate(movedCube)
-		}
-	}
-	queue := []int{0}
-	max := 0
-	for len(queue) > 0 {
-		current := queue[0]
-		depth := udMinMoves[current]
-		queue = queue[1:]
-		for i := 0; i < moveCount; i++ {
-			next := udLookup[current][i]
-			if udMinMoves[next] == 0 && next != 0 {
-				udMinMoves[next] = 1 + depth
-				if udMinMoves[next] > max {
-					max = udMinMoves[next]
-				}
-				queue = append(queue, next)
-			}
 		}
 	}
 }
@@ -179,18 +105,117 @@ func initESliceP2() {
 			eSliceP2Lookup[i][j] = toESliceP2Coordinate(movedCube)
 		}
 	}
+}
+
+func initPhase1COAndSlice() {
 	queue := []int{0}
-	max := 0
+	max := byte(0)
 	for len(queue) > 0 {
 		current := queue[0]
-		depth := eSliceP2MinMoves[current]
+		depth := phase1CoAndSlice[current]
 		queue = queue[1:]
+
+		eSliceP1Coord := current % 495
+		coCoord := current / 495
+
 		for i := 0; i < moveCount; i++ {
-			next := eSliceP2Lookup[current][i]
-			if eSliceP2MinMoves[next] == 0 && next != 0 {
-				eSliceP2MinMoves[next] = 1 + depth
-				if eSliceP2MinMoves[next] > max {
-					max = eSliceP2MinMoves[next]
+			nextCo := coLookup[coCoord][i]
+			nextESlice := eSliceP1Lookup[eSliceP1Coord][i]
+
+			next := nextCo*495 + nextESlice
+			if phase1CoAndSlice[next] == 0 && next != 0 {
+				phase1CoAndSlice[next] = 1 + depth
+				if phase1CoAndSlice[next] > max {
+					max = phase1CoAndSlice[next]
+				}
+				queue = append(queue, next)
+			}
+		}
+	}
+}
+
+func initPhase1EOAndSlice() {
+	queue := []int{0}
+	max := byte(0)
+	for len(queue) > 0 {
+		current := queue[0]
+		depth := phase1EoAndSlice[current]
+		queue = queue[1:]
+
+		eSliceP1Coord := current % 495
+		eoCoord := current / 495
+
+		for i := 0; i < moveCount; i++ {
+			nextCo := eoLookup[eoCoord][i]
+			nextESlice := eSliceP1Lookup[eSliceP1Coord][i]
+
+			next := nextCo*495 + nextESlice
+			if phase1EoAndSlice[next] == 0 && next != 0 {
+				phase1EoAndSlice[next] = 1 + depth
+				if phase1EoAndSlice[next] > max {
+					max = phase1EoAndSlice[next]
+				}
+				queue = append(queue, next)
+			}
+		}
+	}
+}
+
+func initPhase2CornersESlice() {
+	queue := []int{0}
+	max := byte(0)
+	for len(queue) > 0 {
+		current := queue[0]
+		depth := phase2CornerESliceMinMoves[current]
+		queue = queue[1:]
+
+		eSliceP2Coord := current % 24
+		cpCoord := current / 24
+
+		for i := 0; i < moveCount; i++ {
+			// don't do quarter turns on the side faces as these are not valid moves in phase 2
+			if i%3 != 1 && i > moveU3 && i < moveD {
+				continue
+			}
+			nextCp := cpLookup[cpCoord][i]
+			nextESlice := eSliceP2Lookup[eSliceP2Coord][i]
+
+			next := nextCp*24 + nextESlice
+			if phase2CornerESliceMinMoves[next] == 0 && next != 0 {
+				phase2CornerESliceMinMoves[next] = 1 + depth
+				if phase2CornerESliceMinMoves[next] > max {
+					max = phase2CornerESliceMinMoves[next]
+				}
+				queue = append(queue, next)
+			}
+		}
+	}
+}
+
+func initPhase2Edges() {
+	queue := []int{0}
+	max := byte(0)
+	for len(queue) > 0 {
+		current := queue[0]
+		depth := phase2AllEdgesMinMoves[current]
+		queue = queue[1:]
+
+		eSliceP2Coord := current % 24
+		udCoord := current / 24
+
+		for i := 0; i < moveCount; i++ {
+			// don't do quarter turns on the side faces as these are not valid moves in phase 2
+			if i%3 != 1 && i > moveU3 && i < moveD {
+				continue
+			}
+			nextCp := udLookup[udCoord][i]
+			nextESlice := eSliceP2Lookup[eSliceP2Coord][i]
+
+			next := nextCp*24 + nextESlice
+			if phase2AllEdgesMinMoves[next] == 0 && next != 0 {
+				phase2AllEdgesMinMoves[next] = 1 + depth
+				if phase2AllEdgesMinMoves[next] > max {
+					max = phase2AllEdgesMinMoves[next]
 				}
 				queue = append(queue, next)
 			}
@@ -207,23 +232,21 @@ func initESliceP2() {
 // more than that lower bound is a branch not worth searching and can
 // be ignored or "pruned" from the search space.
 func phase1Hueristic(eoCoord, coCood, ePermCoord int) int {
+	coAndSlice := coCood*495 + ePermCoord
+	eoAnSlice := eoCoord*495 + ePermCoord
 	return int(math.Max(
-		math.Max(
-			float64(eoMinMoves[eoCoord]),
-			float64(coMinMoves[coCood]),
-		),
-		float64(eSliceP1MinMoves[ePermCoord]),
+		float64(phase1EoAndSlice[eoAnSlice]),
+		float64(phase1CoAndSlice[coAndSlice]),
 	))
 }
 
 // phase2Hueristic combines the CP, UD and ESliceP2 coorindate spaces
 // to provide the lower bound in the same way we do in Phase 1.
 func phase2Hueristic(cpCoord, eudCood, eeCoord int) int {
+	cornerSliceCoord := cpCoord*24 + eeCoord
+	edgesCoord := eudCood*24 + eeCoord
 	return int(math.Max(
-		math.Max(
-			float64(cpMinMoves[cpCoord]),
-			float64(udMinMoves[eudCood]),
-		),
-		float64(eSliceP2MinMoves[eeCoord]),
+		float64(phase2CornerESliceMinMoves[cornerSliceCoord]),
+		float64(phase2AllEdgesMinMoves[edgesCoord]),
 	))
 }
