@@ -29,7 +29,7 @@ form.addEventListener("submit", (e) => {
 function generateScramble() {
   const faces = ["U", "D", "L", "R", "F", "B"];
   const modifiers = ["", "'", "2"]; // No modifier, prime, or double turn
-  const moves = Math.floor(Math.random() * 8) + 23; // Random number between 23 and 30
+  const moves = Math.floor(Math.random() * 11) + 40; // Random number between 40 and 50
   const scramble = [];
 
   for (let i = 0; i < moves; i++) {
