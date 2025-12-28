@@ -3,7 +3,7 @@ const worker = new Worker("worker.js");
 worker.onmessage = (event) => {
   solution.innerText = event.data.solution;
   duration.innerText = event.data.duration;
-  const moveCount = event.data.solution.split(' ').filter(move => move.trim() !== '').length;
+  const moveCount = event.data.solution.trim().split(/\s+/).filter(move => move !== '').length;
   moves.innerText = `Moves: ${moveCount}`;
 };
 
