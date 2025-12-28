@@ -3,6 +3,9 @@ const worker = new Worker("worker.js");
 worker.onmessage = (event) => {
   solution.innerText = event.data.solution;
   duration.innerText = event.data.duration;
+  const solutionText = event.data.solution || '';
+  const moveCount = solutionText.trim().split(/\s+/).filter(move => move !== '').length;
+  moves.innerText = `Moves: ${moveCount}`;
 };
 
 worker.onerror = (error) => {
@@ -13,6 +16,7 @@ const scramble = document.getElementById("scramble");
 scramble.value = generateScramble();
 const solution = document.getElementById("solution");
 const duration = document.getElementById("duration");
+const moves = document.getElementById("moves");
 const form = document.getElementById("form");
 const randomize = document.getElementById("randomize");
 
