@@ -41,7 +41,7 @@
         align-items: center;
       }
 
-      input[type="text"] {
+      textarea {
         width: 100%;
         max-width: 300px;
         padding: 10px;
@@ -88,12 +88,12 @@
     </header>
 
     <form id="form">
-      <input
-        type="text"
+      <textarea
         id="scramble"
         placeholder="Enter your scramble (e.g., U2 B' L' R' F' D F2 U L' F2)"
         required
-      />
+        rows="4"
+      ></textarea>
       <button id="solvebtn" type="submit">Solve it!</button>
     </form>
 
